@@ -20,11 +20,11 @@ import { UserRole, HackathonStatus } from '../common/constants/enums';
 
 @Controller('hackathons')
 export class HackathonsController {
-  constructor(private readonly hackathonsService: HackathonsService) {}
+  constructor(private readonly hackathonsService: HackathonsService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Roles(UserRole.HOST, UserRole.ORGANIZER, UserRole.ADMIN)
   create(@CurrentUser() user: any, @Body() createDto: CreateHackathonDto) {
     return this.hackathonsService.create(user.id, createDto);
   }
@@ -53,7 +53,7 @@ export class HackathonsController {
   }
 
   @Get(':id/participants')
-  @UseGuards(JwtAuthGuard)
+  // Public endpoint to allow viewing participant count
   async getParticipants(@Param('id') id: string) {
     console.log('🔍 Getting participants for hackathon:', id);
     const result = await this.hackathonsService.getParticipants(id);
@@ -71,6 +71,8 @@ export class HackathonsController {
       teamDescription?: string;
       selectedTrack?: number;
       teamMembers?: Array<{ name: string; email: string; role: string }>;
+      paymentId?: string;
+      providerPaymentId?: string;
     },
   ) {
     console.log('🔄 Registration request:', { hackathonId: id, userId: user.id, registrationData });
@@ -81,7 +83,7 @@ export class HackathonsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Roles(UserRole.HOST, UserRole.ORGANIZER, UserRole.ADMIN)
   update(
     @CurrentUser() user: any,
     @Param('id') id: string,
@@ -92,14 +94,14 @@ export class HackathonsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Roles(UserRole.HOST, UserRole.ORGANIZER, UserRole.ADMIN)
   remove(@CurrentUser() user: any, @Param('id') id: string) {
     return this.hackathonsService.remove(user.id, id);
   }
 
   @Patch(':id/status')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ORGANIZER, UserRole.ADMIN)
+  @Roles(UserRole.HOST, UserRole.ORGANIZER, UserRole.ADMIN)
   updateStatus(
     @CurrentUser() user: any,
     @Param('id') id: string,

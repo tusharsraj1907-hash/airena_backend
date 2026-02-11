@@ -77,12 +77,12 @@ export class UploadsService {
   private fallbackToLocalStorage() {
     this.storageType = 'local';
     this._isCloudStorageConfigured = true; // Set to true for local storage
-    
+
     // Create uploads directory if it doesn't exist
     if (!fs.existsSync(this.localStoragePath)) {
       fs.mkdirSync(this.localStoragePath, { recursive: true });
     }
-    
+
     this.logger.warn('⚠️  Using LOCAL file storage (development mode)');
     this.logger.warn(`   Files will be stored in: ${this.localStoragePath}`);
     this.logger.warn('   For production, configure Backblaze B2 or Azure Blob Storage');
@@ -117,9 +117,9 @@ export class UploadsService {
     // Generate unique filename
     const fileExtension = file.originalname.split('.').pop() || 'bin';
     const uniqueFileName = `${uuidv4()}.${fileExtension}`;
-    
+
     // Build file path: folder/userId/filename or folder/filename
-    const fileKey = userId 
+    const fileKey = userId
       ? `${folder}/${userId}/${uniqueFileName}`
       : `${folder}/${uniqueFileName}`;
 
@@ -128,23 +128,23 @@ export class UploadsService {
         // Local file storage (development mode)
         const fullPath = path.join(this.localStoragePath, fileKey);
         const directory = path.dirname(fullPath);
-        
+
         // Create directory if it doesn't exist
         if (!fs.existsSync(directory)) {
           fs.mkdirSync(directory, { recursive: true });
         }
-        
+
         // Write file to disk
         fs.writeFileSync(fullPath, file.buffer);
-        
+
         // Generate local URL
-        const baseUrl = this.configService.get<string>('BASE_URL') || 'http://localhost:3001';
+        const baseUrl = this.configService.get<string>('API_BASE_URL') || 'http://localhost:3002';
         const publicUrl = `${baseUrl}/uploads/${fileKey}`;
-        
+
         this.logger.log(`✅ File uploaded locally: ${fileKey}`);
         this.logger.log(`   Size: ${(file.size / 1024).toFixed(2)} KB`);
         this.logger.log(`   Path: ${fullPath}`);
-        
+
         return {
           url: publicUrl,
           key: fileKey,
@@ -192,7 +192,7 @@ export class UploadsService {
     } catch (error) {
       this.logger.error(`❌ Failed to upload file: ${error.message}`);
       this.logger.error(`   Error details: ${JSON.stringify(error, Object.getOwnPropertyNames(error))}`);
-      
+
       // Provide more helpful error messages
       let errorMessage = `Failed to upload file: ${error.message}`;
       if (error.message.includes('Malformed Access Key Id') || error.message.includes('InvalidAccessKeyId')) {
@@ -208,7 +208,7 @@ export class UploadsService {
         errorMessage = 'Invalid storage endpoint. Please check your storage endpoint configuration in .env file.';
         this.logger.error('   💡 Tip: Verify your storage endpoint URL is correct.');
       }
-      
+
       throw new BadRequestException(errorMessage);
     }
   }
@@ -221,7 +221,7 @@ export class UploadsService {
     folder: string = 'uploads',
     userId?: string,
   ): Promise<Array<{ url: string; key: string; size: number; originalName: string }>> {
-    const uploadPromises = files.map(file => 
+    const uploadPromises = files.map(file =>
       this.uploadFile(file, folder, userId).then(result => ({
         ...result,
         originalName: file.originalname,

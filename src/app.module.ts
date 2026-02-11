@@ -12,21 +12,27 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { AdminModule } from './admin/admin.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
+    // Task Scheduling
+    ScheduleModule.forRoot(),
+
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
-    
+
     // Database
     PrismaModule,
-    
+
     // HTTP Client
     HttpModule,
-    
+
     // Rate limiting
     ThrottlerModule.forRoot([
       {
@@ -34,7 +40,7 @@ import { UploadsModule } from './uploads/uploads.module';
         limit: 100, // 100 requests per minute
       },
     ]),
-    
+
     // Feature modules
     AuthModule,
     UsersModule,
@@ -45,7 +51,9 @@ import { UploadsModule } from './uploads/uploads.module';
     NotificationsModule,
     AnalyticsModule,
     UploadsModule,
+    AdminModule,
+    PaymentsModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
 

@@ -11,5 +11,7 @@ export class AuthResponseDto {
     status: string;
     avatarUrl?: string;
   };
+  requiresOtp?: boolean;
+  message?: string;
 }
 

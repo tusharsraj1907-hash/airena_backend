@@ -39,6 +39,17 @@ enum SubmissionStatus {
   REJECTED
 }
 
+enum EmailStatus {
+  SENT
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 // ============================================
 // USER MODEL (EXISTING - PRESERVED)
 // ============================================
@@ -56,6 +67,23 @@ model User {
   githubUrl     String?
   linkedinUrl   String?
   portfolioUrl  String?
+  
+  // Email verification
+  emailVerified Boolean   @default(false)
+  otpHash       String?
+  otpExpiresAt  DateTime?
+  
+  // Host approval system
+  hostApproved    Boolean   @default(false)
+  hostRequestedAt DateTime?
+  hostApprovedAt  DateTime?
+  
+  // Host Details (New)
+  organizationName String?
+  phoneNumber      String?
+  experienceLevel  String?
+  hostOnboarded    Boolean   @default(false)
+  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?
@@ -67,6 +95,7 @@ model User {
   uploadedProblemStatements HackathonProblemStatement[]
   reviews                   Review[]
   notifications             Notification[]
+  payments                  Payment[]                @relation("HostPayments")
 
   @@map("users")
 }
@@ -91,17 +120,42 @@ model Hackathon {
   // Dates
   startDate       DateTime
   endDate         DateTime
+  registrationStart DateTime?
   registrationDeadline DateTime?
+  submissionDeadline DateTime?
   
   // Organizer
   organizerId     String
   organizer       User            @relation("HackathonOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
   
   // Metadata
-  bannerUrl       String?
-  location        String?
-  isVirtual       Boolean         @default(false)
-  prizePool       String?
+  bannerUrl         String?
+  logoUrl           String?
+  location          String?
+  isVirtual         Boolean         @default(false)
+  
+  // Extended Metadata
+  category          String          @default("WEB_DEVELOPMENT")
+  whyParticipate    String?         @db.Text
+  expectedOutcome   String?         @db.Text
+  rules             String?         @db.Text
+  guidelines        String?         @db.Text
+  termsAndConditions String?        @db.Text
+  
+  // Contact Info
+  contactPerson     String?
+  contactEmail      String?
+  contactPhone      String?
+  
+  // Prize Info
+  prizeAmount       Float?          @default(0)
+  prizeCurrency     String?         @default("USD")
+  prizePool         String?         // Legacy field
+  registrationFee   Float?          @default(0)
+  
+  // New Fields
+  judges          Json?
+  judgingCriteria Json?
   
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -113,6 +167,7 @@ model Hackathon {
   problemStatements HackathonProblemStatement[]
   reviews         Review[]
   notifications   Notification[]
+  payment         Payment?
 
   @@map("hackathons")
 }
@@ -323,4 +378,53 @@ model Notification {
   createdAt     DateTime  @default(now())
 
   @@map("notifications")
+}
+
+// ============================================
+// EMAIL LOG MODEL (EMAIL DELIVERY TRACKING)
+// ============================================
+
+model EmailLog {
+  id        String      @id @default(uuid())
+  to        String
+  subject   String
+  status    EmailStatus
+  error     String?
+  createdAt DateTime    @default(now())
+
+  @@map("email_logs")
+}
+
+// ============================================
+// PAYMENT MODEL (NEW)
+// ============================================
+
+model Payment {
+  id                String        @id @default(uuid())
+  hostId            String
+  host              User          @relation("HostPayments", fields: [hostId], references: [id], onDelete: Cascade)
+  hackathonId       String?       @unique
+  hackathon         Hackathon?      @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
+  amount            Float
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  providerPaymentId String?       @unique
+  invoiceId         String        @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+// ============================================
+// SYSTEM CONFIG (NEW MODEL - PLATFORM SETTINGS)
+// ============================================
+
+model SystemConfig {
+  key           String    @id
+  value         String
+  description   String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("system_config")
 }

@@ -150,8 +150,8 @@ export class CreateHackathonDto {
   prizeCurrency?: string;
 
   @IsNumber()
-  @IsOptional()
-  registrationFee?: number;
+  @Min(0)
+  registrationFee: number;
 
   @IsNumber()
   @Min(1)
@@ -246,5 +246,11 @@ export class CreateHackathonDto {
   @IsString()
   @IsOptional()
   problemStatementUrl?: string;
+
+  @IsString()
+  paymentId: string;
+
+  @IsString()
+  providerPaymentId: string;
 }
 

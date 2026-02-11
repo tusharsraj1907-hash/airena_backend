@@ -4,6 +4,7 @@
 export const UserRole = {
   PARTICIPANT: 'PARTICIPANT',
   ORGANIZER: 'ORGANIZER',
+  HOST: 'HOST',
   JUDGE: 'JUDGE',
   ADMIN: 'ADMIN',
 } as const;

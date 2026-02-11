@@ -89,5 +89,14 @@ export class SubmissionsController {
   remove(@CurrentUser() user: any, @Param('id') id: string) {
     return this.submissionsService.remove(user.id, id);
   }
+
+  @Patch(':id/status')
+  updateStatus(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body: { status: string; feedback?: string },
+  ) {
+    return this.submissionsService.updateStatus(user.id, id, body.status, body.feedback);
+  }
 }
 

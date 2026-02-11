@@ -9,6 +9,8 @@ import { UpdateSubmissionDto } from './dto/update-submission.dto';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../utils/emailService';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SubmissionsService {
@@ -16,7 +18,8 @@ export class SubmissionsService {
     private httpService: HttpService,
     private configService: ConfigService,
     private prisma: PrismaService,
-  ) {}
+    private notificationsService: NotificationsService,
+  ) { }
 
   async create(userId: string, createDto: CreateSubmissionDto) {
     // Fetch real user data from database
@@ -63,6 +66,8 @@ export class SubmissionsService {
       data: {
         title: createDto.title,
         description: createDto.description,
+        repoUrl: createDto.repositoryUrl,
+        demoUrl: createDto.liveUrl,
         hackathonId: createDto.hackathonId,
         participantId: participation.id,
         teamId: createDto.teamId,
@@ -118,6 +123,72 @@ export class SubmissionsService {
       );
     }
 
+    // Send submission email if final submission (not draft)
+    if (!createDto.isDraft && submission.participant?.user) {
+      try {
+        const hackathon = await this.prisma.hackathon.findUnique({
+          where: { id: createDto.hackathonId },
+          select: { title: true },
+        });
+
+        if (hackathon) {
+          const user = submission.participant.user;
+          const { submissionEmail } = await import('../utils/emailTemplates');
+          const emailTemplate = submissionEmail(
+            `${user.firstName} ${user.lastName}`,
+            hackathon.title,
+            submission.title
+          );
+
+          // @ts-ignore
+          const emailService = new EmailService(this.prisma);
+          await emailService.sendEmailWithLogging(user.email, emailTemplate.subject, emailTemplate.html);
+        }
+      } catch (error) {
+        console.error('Failed to send submission email:', error);
+        // Don't fail submission if email fails
+      }
+    }
+
+    // Notify host about new submission
+    if (!createDto.isDraft) {
+      try {
+        const hackathon = await this.prisma.hackathon.findUnique({
+          where: { id: createDto.hackathonId },
+          select: { id: true, title: true, organizerId: true },
+        });
+        if (hackathon?.organizerId && submission.participant?.user) {
+          await this.notificationsService.notifyHostSubmissionCreated(
+            hackathon.organizerId,
+            hackathon.id,
+            hackathon.title,
+            `${submission.participant.user.firstName} ${submission.participant.user.lastName}`
+          );
+        }
+      } catch (error) {
+        console.error('Failed to send notification to host:', error);
+        // Don't fail submission if notification fails
+      }
+
+      // Notify participant about successful submission
+      try {
+        const hackathon = await this.prisma.hackathon.findUnique({
+          where: { id: createDto.hackathonId },
+          select: { title: true },
+        });
+        if (hackathon) {
+          await this.notificationsService.notifyParticipantSubmissionSuccess(
+            userId,
+            createDto.hackathonId,
+            hackathon.title
+          );
+        }
+      } catch (error) {
+        console.error('Failed to send notification to participant:', error);
+        // Don't fail submission if notification fails
+      }
+    }
+
     return {
       ...submission,
       submitter: submission.participant?.user,
@@ -163,7 +234,7 @@ export class SubmissionsService {
         where: { organizerId: userId },
         select: { id: true },
       });
-      
+
       if (organizerHackathons.length > 0) {
         where.hackathonId = {
           in: organizerHackathons.map(h => h.id),
@@ -418,6 +489,55 @@ export class SubmissionsService {
       },
     });
 
+    // Send submission email if status changed from DRAFT to SUBMITTED
+    const wasSubmitted = submission.status === 'DRAFT' && !updateDto.isDraft;
+    if (wasSubmitted && updatedSubmission.participant?.user) {
+      try {
+        const hackathon = await this.prisma.hackathon.findUnique({
+          where: { id: updatedSubmission.hackathonId },
+          select: { title: true },
+        });
+
+        if (hackathon) {
+          const user = updatedSubmission.participant.user;
+          const { submissionEmail } = await import('../utils/emailTemplates');
+          const emailTemplate = submissionEmail(
+            `${user.firstName} ${user.lastName}`,
+            hackathon.title,
+            updatedSubmission.title
+          );
+
+          // @ts-ignore
+          const emailService = new EmailService(this.prisma);
+          await emailService.sendEmailWithLogging(user.email, emailTemplate.subject, emailTemplate.html);
+        }
+      } catch (error) {
+        console.error('Failed to send submission email:', error);
+        // Don't fail update if email fails
+      }
+    }
+
+    // Notify host about submission update
+    if (!updateDto.isDraft) {
+      try {
+        const hackathon = await this.prisma.hackathon.findUnique({
+          where: { id: updatedSubmission.hackathonId },
+          select: { id: true, title: true, organizerId: true },
+        });
+        if (hackathon?.organizerId && updatedSubmission.participant?.user) {
+          await this.notificationsService.notifyHostSubmissionUpdated(
+            hackathon.organizerId,
+            hackathon.id,
+            hackathon.title,
+            `${updatedSubmission.participant.user.firstName} ${updatedSubmission.participant.user.lastName}`
+          );
+        }
+      } catch (error) {
+        console.error('Failed to send notification to host:', error);
+        // Don't fail update if notification fails
+      }
+    }
+
     return {
       ...updatedSubmission,
       submitter: updatedSubmission.participant?.user,
@@ -470,5 +590,84 @@ export class SubmissionsService {
     });
 
     return { message: 'Submission deleted successfully' };
+  }
+
+  async updateStatus(userId: string, id: string, status: string, feedback?: string) {
+    const submission = await this.prisma.submission.findUnique({
+      where: { id },
+      include: {
+        participant: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        hackathon: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+
+    // Update submission status
+    const updatedSubmission = await this.prisma.submission.update({
+      where: { id },
+      data: { status: status as any },
+    });
+
+    // Send judge decision email for specific statuses
+    const emailStatuses = ['UNDER_REVIEW', 'REJECTED', 'ACCEPTED'];
+    if (emailStatuses.includes(status) && submission.participant?.user && submission.hackathon) {
+      try {
+        const user = submission.participant.user;
+        const hackathon = submission.hackathon;
+
+        let statusForEmail: 'ACCEPTED' | 'REJECTED' | 'UNDER_REVIEW';
+
+        switch (status) {
+          case 'UNDER_REVIEW':
+            statusForEmail = 'UNDER_REVIEW';
+            break;
+          case 'REJECTED':
+            statusForEmail = 'REJECTED';
+            break;
+          case 'ACCEPTED':
+            statusForEmail = 'ACCEPTED';
+            break;
+          default:
+            statusForEmail = 'UNDER_REVIEW';
+        }
+
+        const { judgeDecisionEmail } = await import('../utils/emailTemplates');
+        const emailTemplate = judgeDecisionEmail(
+          `${user.firstName} ${user.lastName}`,
+          hackathon.title,
+          submission.title,
+          statusForEmail,
+          feedback
+        );
+
+        // @ts-ignore
+        const emailService = new EmailService(this.prisma);
+        await emailService.sendEmailWithLogging(user.email, emailTemplate.subject, emailTemplate.html);
+      } catch (error) {
+        console.error('Failed to send judge decision email:', error);
+        // Don't fail status update if email fails
+      }
+    }
+
+    return updatedSubmission;
   }
 }
